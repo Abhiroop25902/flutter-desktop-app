@@ -1,0 +1,237 @@
+import 'package:flutter/material.dart';
+import 'package:fluttericon/octicons_icons.dart';
+import 'package:github/github.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+Future<void> _launchUrl(BuildContext context, String url) async {
+  if (await canLaunch(url)) {
+    await launch(url);
+  } else {
+    return showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Navigation error'),
+        content: Text('Could not launch $url'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class RepositoriesList extends StatefulWidget {
+  const RepositoriesList({required this.gitHub, Key? key}) : super(key: key);
+
+  /// the github client to be used by this page
+  final GitHub gitHub;
+  @override
+  RepositoriesListState createState() => RepositoriesListState();
+}
+
+class RepositoriesListState extends State<RepositoriesList> {
+  late Future<List<Repository>> _repositories;
+
+  /// To initialize the _repositories using github
+  @override
+  initState() {
+    super.initState();
+    _repositories = widget.gitHub.repositories.listRepositories().toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<Repository>>(
+      future: _repositories,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(child: Text('${snapshot.error}'));
+        }
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        var repositories = snapshot.data;
+        return ListView.builder(
+          itemBuilder: (context, index) {
+            var repository = repositories![index];
+            return ListTile(
+              title:
+                  Text('${repository.owner?.login ?? ''}/${repository.name}'),
+              subtitle: Text(repository.description),
+              onTap: () => _launchUrl(context, repository.htmlUrl),
+            );
+          },
+          itemCount: repositories!.length,
+        );
+      },
+    );
+  }
+}
+
+class AssignedIssuesList extends StatefulWidget {
+  const AssignedIssuesList({required this.gitHub, Key? key}) : super(key: key);
+
+  /// the github client to be used by this page
+  final GitHub gitHub;
+
+  @override
+  AssignedIssuesListState createState() => AssignedIssuesListState();
+}
+
+class AssignedIssuesListState extends State<AssignedIssuesList> {
+  late Future<List<Issue>> _assignedIssues;
+
+  @override
+  initState() {
+    super.initState();
+    _assignedIssues = widget.gitHub.issues.listByUser().toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<Issue>>(
+      future: _assignedIssues,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(child: Text('${snapshot.error}'));
+        }
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        var assignedIssues = snapshot.data;
+        return ListView.builder(
+          itemBuilder: (context, index) {
+            var assignedIssue = assignedIssues![index];
+            return ListTile(
+              title: Text(assignedIssue.title),
+              subtitle: Text('${_nameWithOwner(assignedIssue)} '
+                  'Issue #${assignedIssue.number} '
+                  'opened by ${assignedIssue.user?.login ?? ''}'),
+              onTap: () => _launchUrl(context, assignedIssue.htmlUrl),
+            );
+          },
+          itemCount: assignedIssues!.length,
+        );
+      },
+    );
+  }
+
+  String _nameWithOwner(Issue assignedIssue) {
+    final endIndex = assignedIssue.url.lastIndexOf('/issues/');
+    return assignedIssue.url.substring(29, endIndex);
+  }
+}
+
+class PullRequestsList extends StatefulWidget {
+  const PullRequestsList({required this.gitHub, Key? key}) : super(key: key);
+  final GitHub gitHub;
+
+  @override
+  PullRequestsListState createState() => PullRequestsListState();
+}
+
+class PullRequestsListState extends State<PullRequestsList> {
+  @override
+  initState() {
+    super.initState();
+    _pullRequests = widget.gitHub.pullRequests
+        .list(RepositorySlug('flutter', 'flutter'))
+        .toList();
+  }
+
+  late Future<List<PullRequest>> _pullRequests;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<PullRequest>>(
+      future: _pullRequests,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(child: Text('${snapshot.error}'));
+        }
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        var pullRequests = snapshot.data;
+        return ListView.builder(
+          itemBuilder: (context, index) {
+            var pullRequest = pullRequests![index];
+            return ListTile(
+              title: Text(pullRequest.title ?? ''),
+              subtitle: Text('flutter/flutter '
+                  'PR #${pullRequest.number} '
+                  'opened by ${pullRequest.user?.login ?? ''} '
+                  '(${pullRequest.state?.toLowerCase() ?? ''})'),
+              onTap: () => _launchUrl(context, pullRequest.htmlUrl ?? ''),
+            );
+          },
+          itemCount: pullRequests!.length,
+        );
+      },
+    );
+  }
+}
+
+/// The Widget that will be displayed on the screen
+class GitHubSummary extends StatefulWidget {
+  const GitHubSummary({required this.gitHub, Key? key}) : super(key: key);
+  final GitHub gitHub;
+
+  @override
+  _GitHubSummaryState createState() => _GitHubSummaryState();
+}
+
+class _GitHubSummaryState extends State<GitHubSummary> {
+  int _selectedIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    //horizontal
+    return Row(
+      children: [
+        // NavigationRail very similar to NavigationBar
+        NavigationRail(
+          selectedIndex: _selectedIndex,
+          onDestinationSelected: (index) {
+            setState(() {
+              _selectedIndex = index;
+            });
+          },
+          labelType: NavigationRailLabelType.selected,
+          destinations: const [
+            NavigationRailDestination(
+              icon: Icon(Octicons.repo),
+              label: Text('Repositories'),
+            ),
+            NavigationRailDestination(
+              icon: Icon(Octicons.issue_opened),
+              label: Text('Assigned Issues'),
+            ),
+            NavigationRailDestination(
+              icon: Icon(Octicons.git_pull_request),
+              label: Text('Pull Requests'),
+            ),
+          ],
+        ),
+        const VerticalDivider(thickness: 1, width: 1),
+        // This is the main content.
+        // indexed stack responds to the NavigationRail and shows the selected index page
+        Expanded(
+          child: IndexedStack(
+            index: _selectedIndex,
+            children: [
+              RepositoriesList(gitHub: widget.gitHub),
+              AssignedIssuesList(gitHub: widget.gitHub),
+              PullRequestsList(gitHub: widget.gitHub),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
